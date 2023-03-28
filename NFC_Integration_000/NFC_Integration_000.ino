@@ -2,6 +2,7 @@
 #include <MFRC522.h>
 #include <Adafruit_NeoPixel.h>
 #include <Preferences.h>
+#include <ESP32Servo.h>
 
 
 // Defines
@@ -9,20 +10,29 @@
 #define VERSION "0.0.1"
 #define UUID_BUFFER_CAPACITY 32
 
-#define RST_PIN         13
-#define SS_PIN          12
-#define IRQ_PIN         11
+#define RST_PIN           13
+#define SS_PIN            12
+#define IRQ_PIN           11
+#define NEOPIXEL_DATA_PIN 10
+#define SERVO_PIN         18
 
+
+// Lock Servo Limits
+#define SERVO_REST 90
+#define SERVO_OPEN 90 - 25
+#define SERVO_CLOSED 90 + 40
 
 
 
 // Global variables
 MFRC522 mfrc522(SS_PIN, RST_PIN);
-Adafruit_NeoPixel strip(23, 10, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip(23, NEOPIXEL_DATA_PIN, NEO_GRB + NEO_KHZ800);
 
 char uuid_buffer[UUID_BUFFER_CAPACITY];
 size_t uuid_buffer_size = 0;
 Preferences preferences;
+
+Servo servo;
 
 bool locked = false;  // For now in RAM, later in NVStorage
 char bound_uuid[UUID_BUFFER_CAPACITY];
@@ -48,10 +58,22 @@ void initialize_lock() {
   // Init and begin preferences
   preferences.begin("peak-protector", false);
 
-
-
+  // locked = preferences.getBool("locked", false);
   locked = false;
-  memset(bound_uuid, 0, sizeof(bound_uuid));
+  
+  // If we're locked, load the UUID from storage
+  if(locked) {
+    size_t bound_uuid_size = preferences.getInt("bound_uuid_size");
+  } else {
+    memset(bound_uuid, 0, sizeof(bound_uuid));
+  }
+
+  // Initialize the Servo
+  servo.attach(SERVO_PIN);
+  servo.write(SERVO_REST);
+
+  // Update state
+  // servo.write(locked? SERVO_CLOSED : SERVO_OPEN);
 }
 
 void set_strip_color(uint32_t color) {
@@ -119,11 +141,13 @@ void loop() {
       locked = false;
       memset(bound_uuid, 0, sizeof(bound_uuid));
 
+      // Update lock state
+      servo.write(locked? SERVO_CLOSED : SERVO_OPEN);
+
       // Update LEDs
       colorWipe(strip.Color(0, 255, 16), 33);
       // And turn off
       set_strip_color(strip.Color(0, 0, 0));
-      
     } else {
       // No - warning!
       Serial.println("Go away!");
@@ -145,6 +169,9 @@ void loop() {
     // Lock
     locked = true;
     memcpy(bound_uuid, uuid_buffer, uuid_buffer_size);
+
+    // Update lock state
+    servo.write(locked? SERVO_CLOSED : SERVO_OPEN);
 
     // Update LEDs
     colorWipe(strip.Color(0, 64, 255), 33);
