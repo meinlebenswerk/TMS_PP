@@ -1,8 +1,8 @@
 #include <SPI.h>
 #include <MFRC522.h>
-#include <Adafruit_NeoPixel.h>
 #include <Preferences.h>
 #include <ESP32Servo.h>
+// #include "Adafruit_LC709203F.h"
 
 
 // Defines
@@ -13,20 +13,27 @@
 #define RST_PIN           13
 #define SS_PIN            12
 #define IRQ_PIN           11
-#define NEOPIXEL_DATA_PIN 10
-#define SERVO_PIN         18
+// #define SERVO_PIN         18
+#define SERVO_PIN         17
+
+
+#define PIN_R 14 
+#define PIN_G 15 
+#define PIN_B 16 
 
 
 // Lock Servo Limits
 #define SERVO_REST 90
-#define SERVO_OPEN 90 - 25
-#define SERVO_CLOSED 90 + 40
+// #define SERVO_OPEN 90 - 25
+// #define SERVO_CLOSED 90 + 40
+#define SERVO_OPEN 90 + 15
+#define SERVO_CLOSED 90 - 15
 
 
 
 // Global variables
 MFRC522 mfrc522(SS_PIN, RST_PIN);
-Adafruit_NeoPixel strip(23, NEOPIXEL_DATA_PIN, NEO_GRB + NEO_KHZ800);
+// Adafruit_LC709203F lc;
 
 char uuid_buffer[UUID_BUFFER_CAPACITY];
 size_t uuid_buffer_size = 0;
@@ -46,6 +53,22 @@ void initialize_nfc() {
   mfrc522.PCD_Init();
   mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
   delay(4);
+
+  Serial.println(F("MFRC522 Digital self test"));
+  Serial.println(F("*****************************"));
+  mfrc522.PCD_DumpVersionToSerial();  // Show version of PCD - MFRC522 Card Reader
+  Serial.println(F("-----------------------------"));
+  Serial.println(F("Only known versions supported"));
+  Serial.println(F("-----------------------------"));
+  Serial.println(F("Performing test..."));
+  bool result = mfrc522.PCD_PerformSelfTest(); // perform the test
+  Serial.println(F("-----------------------------"));
+  Serial.print(F("Result: "));
+  if (result)
+    Serial.println(F("OK"));
+  else
+    Serial.println(F("DEFECT or UNKNOWN"));
+  Serial.println();
 
   // Zero out the uuid buffer
   memset(uuid_buffer, 0, sizeof(uuid_buffer));
@@ -76,26 +99,40 @@ void initialize_lock() {
   // servo.write(locked? SERVO_CLOSED : SERVO_OPEN);
 }
 
-void set_strip_color(uint32_t color) {
-  for(int i=0; i<strip.numPixels(); i++) {
-    strip.setPixelColor(i, color);
-  }
-  strip.show();
-}
+// Battery monitoring
+// void initialize_battery_monitoring() {
+//   lc.begin();
+//   Serial.print("Version: 0x"); Serial.println(lc.getICversion(), HEX);
+//   lc.setThermistorB(3950);
+//   Serial.print("Thermistor B = "); Serial.println(lc.getThermistorB());
+//   lc.setPackSize(LC709203F_APA_1000MAH);
+//   lc.setAlarmVoltage(3.8);
+// }
 
-void colorWipe(uint32_t color, int wait) {
-  for(int i=0; i<strip.numPixels(); i++) { // For each pixel in strip...
-    strip.setPixelColor(i, color);         //  Set pixel's color (in RAM)
-    strip.show();                          //  Update strip to match
-    delay(wait);                           //  Pause for a moment
-  }
-}
+// void print_battery_state() {
+//   // We can query this every few (~3s)
+//   Serial.print("Batt_Voltage:");
+//   Serial.print(lc.cellVoltage(), 3);
+//   Serial.print("\t");
+//   Serial.print("Batt_Percent:");
+//   Serial.print(lc.cellPercent(), 1);
+//   Serial.print("\t");
+//   Serial.print("Batt_Temp:");
+//   Serial.println(lc.getCellTemperature(), 1);
+// }
 
 void initialize_leds() {
-  strip.begin();
-  strip.show();
-  strip.setBrightness(255);
+  pinMode(PIN_R, OUTPUT);
+  pinMode(PIN_G, OUTPUT);
+  pinMode(PIN_B, OUTPUT);
+  write_led_color(0, 0, 0);
 }
+
+void write_led_color(uint8_t r, uint8_t g, uint8_t b) {
+  analogWrite(PIN_R, 255 - r);
+  analogWrite(PIN_G, 255 - g);
+  analogWrite(PIN_B, 255 - b);
+} 
 
 
 void read_in_uuid(char* buffer, size_t* size) {
@@ -106,25 +143,26 @@ void read_in_uuid(char* buffer, size_t* size) {
 
 void setup() {
 	Serial.begin(115200);
-
+  // while(!Serial){};
   Serial.println(F("PeakGuard v" VERSION " starting..."));
   
   initialize_lock();
   initialize_nfc();
   initialize_leds();
-
-  Serial.println(sizeof(uuid_buffer));
+  // initialize_battery_monitoring();
 }
 
 void loop() {
   // Do nothing when there's no new card
 	if (!mfrc522.PICC_IsNewCardPresent()) {
+    // Serial.println("No new card...");
 		return;
 	}
 
 	// Select one of the cards
   // TODO! figure out what this means
 	if (!mfrc522.PICC_ReadCardSerial()) {
+    // Serial.println("Cannot read card serial");
 		return;
 	}
 
@@ -145,22 +183,22 @@ void loop() {
       servo.write(locked? SERVO_CLOSED : SERVO_OPEN);
 
       // Update LEDs
-      colorWipe(strip.Color(0, 255, 16), 33);
-      // And turn off
-      set_strip_color(strip.Color(0, 0, 0));
+      write_led_color(0, 255, 16);
+      delay(500);
+      write_led_color(0, 0, 0);
     } else {
       // No - warning!
       Serial.println("Go away!");
 
       // Flash LEDs red
       for(int i=0; i<2; i++) {
-        set_strip_color(strip.Color(255, 0, 0));
+        write_led_color(255, 0, 0);
         delay(200);
-        set_strip_color(strip.Color(0, 0, 0));
+        write_led_color(0, 0, 0);
         delay(200);
       }
       // And turn off
-      set_strip_color(strip.Color(0, 0, 0));
+      write_led_color(0, 0, 0);
     }
   } else {
     // Bind to card:
@@ -174,9 +212,9 @@ void loop() {
     servo.write(locked? SERVO_CLOSED : SERVO_OPEN);
 
     // Update LEDs
-    colorWipe(strip.Color(0, 64, 255), 33);
-    // And turn off
-    set_strip_color(strip.Color(0, 0, 0));
+    write_led_color(0, 64, 255);
+    delay(500);
+    write_led_color(0, 0, 0);
   }
 
   // Do this to stop the loop?
