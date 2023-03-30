@@ -26,8 +26,10 @@
 #define SERVO_REST 90
 // #define SERVO_OPEN 90 - 25
 // #define SERVO_CLOSED 90 + 40
-#define SERVO_OPEN 90 + 15
-#define SERVO_CLOSED 90 - 15
+// #define SERVO_OPEN 90 + 15
+// #define SERVO_CLOSED 90 - 15
+#define SERVO_OPEN 90 + 32
+#define SERVO_CLOSED 90 - 18
 
 
 
